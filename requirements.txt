@@ -1,0 +1,9 @@
+opencv-python
+numpy
+requests
+flask
+flask-cors
+flask-sock
+paho-mqtt
+insightface
+onnxruntime

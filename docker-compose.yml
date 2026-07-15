@@ -1,0 +1,10 @@
+services:
+  smartx-face-service:
+    build: .
+    container_name: smartx_face_service
+    restart: unless-stopped
+    network_mode: host   # simplifie l'accès MQTT (localhost:1883) et l'exposition du port 5001
+    volumes:
+      - ./data/face_profiles:/app/face_profiles
+      - ./data/smartx_face_config.json:/app/smartx_face_config.json
+      - ./data/insightface_models:/root/.insightface   # évite de retélécharger buffalo_l à chaque rebuild
