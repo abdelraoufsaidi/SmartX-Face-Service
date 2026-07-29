@@ -5,7 +5,7 @@ Expose une API REST utilisée par l'intégration Home Assistant :
 - GET  /health
 - GET  /snapshot                 -> JPEG de la dernière frame (preview live)
 - POST /config                   -> {vto: {ip, username, password, channel, subtype}}
-- POST /enroll/start              {"name": "nabil"}
+- POST /enroll/start              {"name": "Abd El Raouf"}
 - POST /enroll/capture             -> capture le visage de la frame courante
 - POST /enroll/finish               -> sauvegarde le profil moyenné
 - GET  /profiles
@@ -247,38 +247,162 @@ _ENROLL_HTML = """
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SMARTX — Enrôlement facial</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
-  body { background:#1a1a1a; color:#eee; font-family: sans-serif; text-align:center; padding:20px; }
-  img { max-width:100%; border-radius:8px; border:2px solid #F5A623; }
-  input, button {
-    font-size:16px; padding:8px 12px; margin:6px; border-radius:6px; border:none;
+  :root {
+    --bg: #0c0f14;
+    --surface: #151a21;
+    --surface-2: #1b212a;
+    --border: #262d37;
+    --text: #eef1f5;
+    --muted: #8b93a1;
+    --accent: #0090e6;
+    --accent-light: #29c2f7;
+    --accent-ink: #ffffff;
+    --ok: #2fa66a;
+    --danger: #e0524c;
   }
-  button { background:#F5A623; color:#1a1a1a; cursor:pointer; font-weight:bold; }
-  button:disabled { background:#555; color:#999; cursor:not-allowed; }
-  #status { margin-top:10px; min-height:24px; }
-  .ok { color:#4caf50; }
-  .warn { color:#ff9800; }
-  .err { color:#f44336; }
+  * { box-sizing:border-box; }
+  body {
+    background: radial-gradient(120% 140% at 50% -10%, #171d26 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    text-align:center; padding:24px 16px 32px; margin:0; min-height:100vh;
+  }
+  .brand { font-size:12px; font-weight:700; letter-spacing:.16em; color:var(--muted); text-transform:uppercase; margin-bottom:16px; }
+  .brand span {
+    background:linear-gradient(135deg, var(--accent-light), var(--accent));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+
+  .card {
+    max-width:480px; margin:0 auto; text-align:left;
+    background:var(--surface); border:1px solid var(--border); border-radius:20px;
+    padding:16px; box-shadow:0 20px 40px -20px rgba(0,0,0,.6);
+  }
+
+  .monitor { position:relative; border-radius:13px; overflow:hidden; background:#000; }
+  .monitor::before {
+    content:"⏺ ENRÔLEMENT"; position:absolute; top:12px; left:12px; z-index:2;
+    font-size:11px; font-weight:800; letter-spacing:.06em; color:var(--accent);
+    background:rgba(10,12,16,.6); padding:4px 8px; border-radius:6px;
+    -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+  }
+  img#preview { width:100%; display:block; }
+
+  .field { margin-top:16px; }
+  .field label { display:block; font-size:12px; font-weight:700; color:var(--muted); margin-bottom:6px; letter-spacing:.03em; }
+  .input-wrap { position:relative; }
+  .input-wrap svg {
+    position:absolute; left:13px; top:50%; transform:translateY(-50%);
+    width:17px; height:17px; color:var(--muted); pointer-events:none;
+  }
+  input#nameInput {
+    width:100%; font-family:inherit; font-size:15px; font-weight:600; color:var(--text);
+    background:var(--surface-2); border:1px solid var(--border); border-radius:12px;
+    padding:12px 14px 12px 40px; outline:none;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  input#nameInput::placeholder { color:var(--muted); font-weight:500; }
+  input#nameInput:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(0,144,230,.22); }
+
+  button.primary {
+    width:100%; margin-top:10px; font-family:inherit; font-size:15px; font-weight:800;
+    color:var(--accent-ink); background:var(--accent); border:none; border-radius:12px;
+    padding:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;
+    box-shadow:0 8px 20px -8px rgba(0,144,230,.5);
+    transition: transform .12s ease, opacity .15s ease;
+  }
+  button.primary svg { width:18px; height:18px; flex-shrink:0; }
+  button.primary:active { transform:scale(.98); }
+  button.primary:disabled { background:var(--surface-2); color:var(--muted); box-shadow:none; cursor:not-allowed; }
+
+  .progress { display:flex; align-items:center; gap:8px; margin:16px 2px 4px; }
+  .progress .dot { flex:1; height:6px; border-radius:999px; background:var(--surface-2); border:1px solid var(--border); transition:background .2s ease, border-color .2s ease; }
+  .progress .dot.filled { background:var(--ok); border-color:var(--ok); }
+  .progress-label { font-size:12px; font-weight:700; color:var(--muted); margin-bottom:2px; }
+
+  .actions { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:14px; }
+  button.action {
+    font-family:inherit; font-size:13px; font-weight:700; color:var(--text);
+    background:var(--surface-2); border:1px solid var(--border); border-radius:11px;
+    padding:11px 6px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:5px;
+    transition: transform .12s ease, background-color .15s ease, border-color .15s ease, opacity .15s ease;
+  }
+  button.action svg { width:18px; height:18px; }
+  button.action:active:not(:disabled) { transform:scale(.96); }
+  button.action:disabled { opacity:.4; cursor:not-allowed; }
+  #captureBtn:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+  #finishBtn:not(:disabled) { border-color:var(--ok); color:var(--ok); }
+  #cancelBtn:not(:disabled) { border-color:var(--danger); color:var(--danger); }
+
+  #status {
+    margin-top:16px; font-size:13px; font-weight:600; color:var(--muted);
+    display:flex; align-items:center; gap:8px; min-height:20px;
+  }
+  #status::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+  #status.ok { color:var(--ok); } #status.ok::before { background:var(--ok); }
+  #status.warn { color:var(--accent); } #status.warn::before { background:var(--accent); }
+  #status.err { color:var(--danger); } #status.err::before { background:var(--danger); }
 </style>
 </head>
 <body>
-  <h2>SMARTX — Enrôlement facial</h2>
-  <img id="preview" src="stream" alt="Flux caméra">
-  <div>
-    <input id="nameInput" type="text" placeholder="Nom de la personne">
-    <button id="startBtn" onclick="startEnroll()">Démarrer</button>
+  <div class="brand">SMART<span>X</span> · Enrôlement facial</div>
+  <div class="card">
+    <div class="monitor">
+      <img id="preview" src="stream" alt="Flux caméra">
+    </div>
+
+    <div class="field">
+      <label for="nameInput">Nom de la personne</label>
+      <div class="input-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <input id="nameInput" type="text" placeholder="ex. Abd El Raouf">
+      </div>
+      <button id="startBtn" class="primary" onclick="startEnroll()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Démarrer
+      </button>
+    </div>
+
+    <div class="progress-label">Captures</div>
+    <div class="progress" id="progressDots"></div>
+
+    <div class="actions">
+      <button id="captureBtn" class="action" onclick="capture()" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Capturer
+      </button>
+      <button id="finishBtn" class="action" onclick="finish()" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Terminer
+      </button>
+      <button id="cancelBtn" class="action" onclick="cancelEnroll()" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Annuler
+      </button>
+    </div>
+
+    <div id="status">Prêt à démarrer.</div>
   </div>
-  <div>
-    <button id="captureBtn" onclick="capture()" disabled>Capturer</button>
-    <button id="finishBtn" onclick="finish()" disabled>Terminer</button>
-    <button id="cancelBtn" onclick="cancelEnroll()" disabled>Annuler</button>
-  </div>
-  <div id="status"></div>
 
 <script>
 let captureCount = 0;
 const MIN_CAPTURES = 5;
+
+const dotsEl = document.getElementById("progressDots");
+function renderDots(count) {
+  dotsEl.innerHTML = "";
+  for (let i = 0; i < MIN_CAPTURES; i++) {
+    const d = document.createElement("div");
+    d.className = "dot" + (i < count ? " filled" : "");
+    dotsEl.appendChild(d);
+  }
+}
+renderDots(0);
 
 function setStatus(msg, cls) {
   const el = document.getElementById("status");
@@ -300,6 +424,7 @@ async function startEnroll() {
   const data = await resp.json();
   if (data.started) {
     captureCount = 0;
+    renderDots(0);
     setStatus(`Session démarrée pour '${name}'. Capture 0/${MIN_CAPTURES}.`, "ok");
     document.getElementById("captureBtn").disabled = false;
     document.getElementById("cancelBtn").disabled = false;
@@ -315,6 +440,7 @@ async function capture() {
   const data = await resp.json();
   if (data.accepted) {
     captureCount = data.count;
+    renderDots(captureCount);
     setStatus(`✓ Capture ${data.count}/${data.min_required}`, "ok");
     if (data.ready) {
       document.getElementById("finishBtn").disabled = false;
@@ -347,6 +473,8 @@ function resetUI() {
   document.getElementById("captureBtn").disabled = true;
   document.getElementById("finishBtn").disabled = true;
   document.getElementById("cancelBtn").disabled = true;
+  captureCount = 0;
+  renderDots(0);
 }
 </script>
 </body>
@@ -359,29 +487,128 @@ _TALK_HTML = """
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SMARTX — Interphone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
-  body { background:#111; color:#eee; font-family: sans-serif; text-align:center; margin:0; padding:16px; }
-  img#stream { width:100%; max-width:480px; border-radius:12px; border:2px solid #333; }
-  .row { margin-top:16px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
-  button { font-size:16px; padding:14px 22px; border:none; border-radius:10px; cursor:pointer; }
-  #callBtn { background:#2b8a3e; color:white; }
-  #callBtn.active { background:#c0392b; }
-  #doorBtn { background:#1e6fd9; color:white; }
-  #status { margin-top:10px; font-size:14px; color:#aaa; }
+  :root {
+    --bg: #0c0f14;
+    --surface: #151a21;
+    --border: #262d37;
+    --text: #eef1f5;
+    --muted: #8b93a1;
+    --accent: #0090e6;
+    --accent-light: #29c2f7;
+    --accent-ink: #ffffff;
+    --call: #2fa66a;
+    --call-ink: #08150e;
+    --hangup: #e0524c;
+    --focus: #29c2f7;
+  }
+  * { box-sizing:border-box; }
+  body {
+    background: radial-gradient(120% 140% at 50% -10%, #171d26 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    text-align:center; margin:0; padding:20px 16px 28px;
+    min-height:100vh;
+  }
+  .brand { font-size:12px; font-weight:700; letter-spacing:.16em; color:var(--muted); text-transform:uppercase; margin-bottom:14px; }
+  .brand span {
+    background:linear-gradient(135deg, var(--accent-light), var(--accent));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+
+  .monitor {
+    position:relative; max-width:480px; margin:0 auto;
+    border-radius:18px; padding:6px;
+    background:linear-gradient(160deg,#232a34,#11151b);
+    border:1px solid var(--border);
+    box-shadow:0 20px 40px -20px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.02);
+  }
+  .monitor::before {
+    content:"● LIVE"; position:absolute; top:16px; left:16px; z-index:2;
+    font-size:11px; font-weight:800; letter-spacing:.06em; color:#ff5f5f;
+    background:rgba(10,12,16,.55); padding:4px 8px; border-radius:6px;
+    -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+  }
+  img#stream { width:100%; display:block; border-radius:13px; background:#000; }
+
+  .row { margin-top:22px; display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+
+  button.ctrl {
+    font-family:inherit; font-size:15px; font-weight:700; color:var(--text);
+    border:none; border-radius:16px; cursor:pointer;
+    padding:14px 24px 14px 18px; min-width:168px;
+    display:inline-flex; align-items:center; gap:10px; justify-content:center;
+    transition: transform .12s ease, box-shadow .12s ease, background-color .15s ease;
+  }
+  button.ctrl:active { transform:scale(.96); }
+  button.ctrl svg { width:20px; height:20px; flex-shrink:0; }
+
+  #callBtn {
+    background:var(--call); color:var(--call-ink);
+    box-shadow:0 8px 20px -8px rgba(47,166,106,.55);
+  }
+  #callBtn:hover { box-shadow:0 10px 24px -8px rgba(47,166,106,.7); }
+  #callBtn.active {
+    background:var(--hangup); color:#1a0908;
+    box-shadow:0 8px 20px -8px rgba(224,82,76,.6);
+    animation: pulseRing 1.6s ease-out infinite;
+  }
+  #doorBtn {
+    background:var(--accent); color:var(--accent-ink);
+    box-shadow:0 8px 20px -8px rgba(0,144,230,.5);
+  }
+  #doorBtn:hover { box-shadow:0 10px 24px -8px rgba(0,144,230,.65); }
+  #doorBtn.busy { opacity:.7; cursor:default; animation:none; }
+
+  @keyframes pulseRing {
+    0%   { box-shadow:0 8px 20px -8px rgba(224,82,76,.6), 0 0 0 0 rgba(224,82,76,.45); }
+    70%  { box-shadow:0 8px 20px -8px rgba(224,82,76,.6), 0 0 0 14px rgba(224,82,76,0); }
+    100% { box-shadow:0 8px 20px -8px rgba(224,82,76,.6), 0 0 0 0 rgba(224,82,76,0); }
+  }
+
+  #status {
+    margin-top:18px; font-size:13px; color:var(--muted); font-weight:600;
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--surface); border:1px solid var(--border);
+    padding:8px 16px; border-radius:999px;
+  }
+  #status::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--muted); }
+  #status.ok::before { background:var(--call); }
+  #status.warn::before { background:var(--accent); }
+  #status.err::before { background:var(--hangup); }
 </style>
 </head>
 <body>
-  <img id="stream" src="stream" alt="Flux caméra porte">
+  <div class="brand">SMART<span>X</span> · Interphone</div>
+  <div class="monitor">
+    <img id="stream" src="stream" alt="Flux caméra porte">
+  </div>
   <div class="row">
-    <button id="callBtn" onclick="toggleCall()">📞 Appeler</button>
-    <button id="doorBtn" onclick="openDoor()">🚪 Ouvrir la porte</button>
+    <button id="callBtn" class="ctrl" onclick="toggleCall()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      <span id="callLabel">Appeler</span>
+    </button>
+    <button id="doorBtn" class="ctrl" onclick="openDoor()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V4a1 1 0 0 1 1-1h7l5 3v15M13 12v.01"/></svg>
+      <span>Ouvrir la porte</span>
+    </button>
   </div>
   <div id="status">Prêt.</div>
 
 <script>
 const statusEl = document.getElementById('status');
 const callBtn = document.getElementById('callBtn');
+const callLabel = document.getElementById('callLabel');
+const doorBtn = document.getElementById('doorBtn');
+
+function setCallState(active) {
+  callLabel.textContent = active ? "Raccrocher" : "Appeler";
+  callBtn.classList.toggle("active", active);
+}
 
 let ws = null;
 let audioCtx = null;
@@ -389,16 +616,23 @@ let micStream = null;
 let micNode = null;
 let playTime = 0;
 
-function setStatus(msg) { statusEl.textContent = msg; }
+function setStatus(msg, cls) {
+  statusEl.textContent = msg;
+  statusEl.className = cls || "";
+}
 
 async function openDoor() {
-  setStatus("Ouverture de la porte...");
+  if (doorBtn.classList.contains("busy")) return;
+  doorBtn.classList.add("busy");
+  setStatus("Ouverture de la porte...", "warn");
   try {
     const resp = await fetch('door/open', { method: 'POST' });
     const data = await resp.json();
-    setStatus(data.opened ? "Porte ouverte." : "Échec ouverture porte.");
+    setStatus(data.opened ? "Porte ouverte." : "Échec ouverture porte.", data.opened ? "ok" : "err");
   } catch (e) {
-    setStatus("Erreur réseau (ouverture porte).");
+    setStatus("Erreur réseau (ouverture porte).", "err");
+  } finally {
+    setTimeout(() => doorBtn.classList.remove("busy"), 1200);
   }
 }
 
@@ -412,15 +646,15 @@ function toggleCall() {
 
 async function startCall() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setStatus("Micro indisponible : la page doit être servie en HTTPS (ou via localhost).");
+    setStatus("Micro indisponible : la page doit être servie en HTTPS (ou via localhost).", "err");
     return;
   }
 
-  setStatus("Connexion...");
+  setStatus("Connexion...", "warn");
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
-    setStatus("Micro refusé par le navigateur.");
+    setStatus("Micro refusé par le navigateur.", "err");
     return;
   }
 
@@ -462,16 +696,15 @@ async function startCall() {
       ws.send(pcm16.buffer);
     };
 
-    callBtn.textContent = "📴 Raccrocher";
-    callBtn.classList.add("active");
-    setStatus("Appel en cours...");
+    setCallState(true);
+    setStatus("Appel en cours...", "ok");
   };
 
   ws.onmessage = (event) => {
     if (typeof event.data === "string") {
       const msg = JSON.parse(event.data);
-      if (msg.type === "error") setStatus("Erreur : " + msg.message);
-      if (msg.type === "connected") setStatus("Appel en cours...");
+      if (msg.type === "error") setStatus("Erreur : " + msg.message, "err");
+      if (msg.type === "connected") setStatus("Appel en cours...", "ok");
       return;
     }
     // PCM16 mono 8kHz venant du VTO -> lecture via un petit buffer audio.
@@ -492,7 +725,7 @@ async function startCall() {
   };
 
   ws.onclose = () => stopCall();
-  ws.onerror = () => setStatus("Erreur WebSocket.");
+  ws.onerror = () => setStatus("Erreur WebSocket.", "err");
 }
 
 function stopCall() {
@@ -500,9 +733,8 @@ function stopCall() {
   if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
   if (ws) { try { ws.close(); } catch(e) {} ws = null; }
-  callBtn.textContent = "📞 Appeler";
-  callBtn.classList.remove("active");
-  setStatus("Appel terminé.");
+  setCallState(false);
+  setStatus("Appel terminé.", "warn");
 }
 </script>
 </body>
